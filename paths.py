@@ -1,4 +1,5 @@
-DATA = 'data'
+ROOT = '/Users/av656/Documents/Cambridge/MRes Project'
+DATA = ROOT + '/Data'
 
 WEATHER_UK = DATA + '/weather_UK'
 SURFACE_UK = DATA + '/surface_UK'

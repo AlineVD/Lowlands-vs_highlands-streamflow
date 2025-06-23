@@ -18,7 +18,7 @@ from apollo import hydropoint as hp
 from train_model import load_data
 
 ### Specify meteorological variables and spatiotemporal ranges
-area = ['60.00/-8.00/48.00/4.00']
+area = [60, -8, 48, 4]
 yyyy = [str(y) for y in range(1979,2022,1)]
 mm = [str(m) for m in range(1,13,1)]
 dd = [str(d) for d in range(1,32,1)]
@@ -34,18 +34,21 @@ met = ['total_precipitation','snowmelt', 'temperature','u_component_of_wind',
 ## Download Rainfall, including snow melt separately (midnight to midnight and shifted daily from 9 to 9)
 for yy in yyyy:
 
-    filename = paths.WEATHER_UK + '/Rainfall/Rainfall_' + str(yy)
-    rain_query = er.query(filename, 'reanalysis-era5-single-levels', met[:2],
-                                  area, yy, mm, dd, hh)
+    for m in mm:
 
-    if not os.path.exists(filename + '.nc'):
-        print('downloading ', filename)
-        rain_data = er.era5(rain_query).download()
+        filename = paths.WEATHER_UK + '/Rainfall/Rainfall_' + str(yy) + str(m)
+        rain_query = er.query(filename, 'reanalysis-era5-single-levels', met[:2],
+                                    area, yy, m, dd, hh)
 
-        # Save the hourly precipitation data and aggregate daily (from midnight to midnight)
-        er.aggregate_mean(str(rain_query['file_stem']) + '.nc',
+        if not os.path.exists(filename + '.nc'):
+            print('downloading ', filename)
+            rain_data = er.era5(rain_query).download()
+
+            # Save the hourly precipitation data and aggregate daily (from midnight to midnight)
+            er.aggregate_mean(str(rain_query['file_stem']) + '.nc',
                       str(rain_query['file_stem']) + '_aggregated.nc')
 
+"""
     # Shift the daily aggregation (from 9am to 9am)
     if not os.path.exists(filename + '_9to9.nc'):
         print('shifting', filename)
@@ -55,15 +58,15 @@ for yy in yyyy:
         er.aggregate_mean(str(rain_query['file_stem']) + '_9to9.nc',
                           str(rain_query['file_stem']) + '_aggregated_9to9.nc',
                           shift=9)
+"""
 
 # Combine the daily midnight-midnight precipitation
-"""
 if not os.path.exists(paths.RAINFALL_UK):
     full_rain_data = xr.open_mfdataset(paths.WEATHER_UK + '/Rainfall/Rainfall_*_aggregated.nc', concat_dim='time',
                                        combine='nested')
     full_rain_data.to_netcdf(path=paths.RAINFALL_UK)
-    """
 
+"""
 # Combine the daily 9 to 9 precipiptation
 if not os.path.exists(paths.RAINFALL_UK_SHIFTED):
     full_shifted_rain_data = xr.open_mfdataset(paths.WEATHER_UK + '/Rainfall/Rainfall_*_aggregated_9to9.nc',
@@ -78,7 +81,7 @@ if not os.path.exists(paths.RAINFALL_HOURLY_UK_SHIFTED):
     full_rain_data = xr.open_mfdataset(filtered_files, concat_dim='time', combine='nested')
     if not os.path.exists(paths.RAINFALL_HOURLY_UK_SHIFTED):
         full_rain_data.to_netcdf(path=paths.RAINFALL_HOURLY_UK_SHIFTED)
-
+"""
 
 ## Download Pressure data (converted to windspeed and humidity later)
 for yy in yyyy:
@@ -94,7 +97,8 @@ full_pressure_data = xr.open_mfdataset(paths.WEATHER_UK + '/Pressure/Pressure_*.
 if not os.path.exists(paths.PRESSURE_UK):
     full_pressure_data.to_netcdf(path=paths.PRESSURE_UK)
 
-"""## Download Soil Moisture data (4 different soil layers)
+"""
+## Download Soil Moisture data (4 different soil layers)
 for yy in yyyy:
     filename = paths.SURFACE_UK + '/Soil_Moisture_' + str(yy)
 
