@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="riverflow_env" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="riverflow_gp" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="sf_env" project-jdk-type="Python SDK" />
 </project>

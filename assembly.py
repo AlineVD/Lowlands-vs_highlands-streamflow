@@ -24,9 +24,9 @@ mm = [str(m) for m in range(1,13,1)]
 dd = [str(d) for d in range(1,32,1)]
 hh = [str(t).zfill(2) + ':00' for t in range(0, 24, 1)]
 met = ['total_precipitation','snowmelt', 'temperature','u_component_of_wind',
-       'v_component_of_wind','relative_humidity',
-       'volumetric_soil_water_layer_1','volumetric_soil_water_layer_2',
-       'volumetric_soil_water_layer_3','volumetric_soil_water_layer_4']
+       'v_component_of_wind','relative_humidity']
+       #'volumetric_soil_water_layer_1','volumetric_soil_water_layer_2',
+       #'volumetric_soil_water_layer_3','volumetric_soil_water_layer_4']
 
 
 ### Download meteorological variable sets from Copernicus Data Store
@@ -57,10 +57,12 @@ for yy in yyyy:
                           shift=9)
 
 # Combine the daily midnight-midnight precipitation
+"""
 if not os.path.exists(paths.RAINFALL_UK):
     full_rain_data = xr.open_mfdataset(paths.WEATHER_UK + '/Rainfall/Rainfall_*_aggregated.nc', concat_dim='time',
                                        combine='nested')
     full_rain_data.to_netcdf(path=paths.RAINFALL_UK)
+    """
 
 # Combine the daily 9 to 9 precipiptation
 if not os.path.exists(paths.RAINFALL_UK_SHIFTED):
@@ -92,7 +94,7 @@ full_pressure_data = xr.open_mfdataset(paths.WEATHER_UK + '/Pressure/Pressure_*.
 if not os.path.exists(paths.PRESSURE_UK):
     full_pressure_data.to_netcdf(path=paths.PRESSURE_UK)
 
-## Download Soil Moisture data (4 different soil layers)
+"""## Download Soil Moisture data (4 different soil layers)
 for yy in yyyy:
     filename = paths.SURFACE_UK + '/Soil_Moisture_' + str(yy)
 
@@ -103,20 +105,19 @@ for yy in yyyy:
 
 full_soil_moisture_data = xr.open_mfdataset(paths.SURFACE_UK + '/Soil_Moisture_*.nc', concat_dim='time', combine='nested')
 if not os.path.exists(paths.SOIL_MOISTURE_UK):
-    full_soil_moisture_data.to_netcdf(path=paths.SOIL_MOISTURE_UK)
-
+    full_soil_moisture_data.to_netcdf(path=paths.SOIL_MOISTURE_UK)"""
 
 ### Produce lumped regression files per catchment
 domain_weather = xr.open_mfdataset([paths.RAINFALL_UK_SHIFTED,
                                     paths.PRESSURE_UK])
-surface_data = xr.open_dataset(paths.SOIL_MOISTURE_UK)
 domain_weather= domain_weather.astype(np.float32)
-surface_data = surface_data.astype(np.float32)
+#surface_data = xr.open_dataset(paths.SOIL_MOISTURE_UK)
+#surface_data = surface_data.astype(np.float32)
 
 domain_rain = xr.open_dataset(paths.RAINFALL_UK_SHIFTED)
 
-domain_rain_HR = xr.open_mfdataset(paths.RAINFALL_UK_SHIFTED_HR)
-domain_rain_hourly = xr.open_mfdataset([paths.RAINFALL_HOURLY_UK_SHIFTED])
+#domain_rain_HR = xr.open_mfdataset(paths.RAINFALL_UK_SHIFTED_HR)
+#domain_rain_hourly = xr.open_mfdataset([paths.RAINFALL_HOURLY_UK_SHIFTED])
 
 db = pd.read_csv(paths.DATA + '/Catchments_Database.csv')
 
