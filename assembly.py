@@ -9,12 +9,13 @@ data handling functions from the apollo library.
 # Import cdsapi and create a Client instance
 import os
 import glob
+import json
 import paths
 import xarray as xr
 import pandas as pd
 import numpy as np
 from apollo import era5 as er
-from apollo import hydropoint as hp
+from download_data import hydropoint_adjusted as hp
 from train_model import load_data
 
 ### Specify meteorological variables and spatiotemporal ranges
@@ -25,27 +26,23 @@ dd = [str(d) for d in range(1,32,1)]
 hh = [str(t).zfill(2) + ':00' for t in range(0, 24, 1)]
 met = ['total_precipitation','snowmelt', 'temperature','u_component_of_wind',
        'v_component_of_wind','relative_humidity']
-       #'volumetric_soil_water_layer_1','volumetric_soil_water_layer_2',
-       #'volumetric_soil_water_layer_3','volumetric_soil_water_layer_4']
-
 
 ### Download meteorological variable sets from Copernicus Data Store
 
 ## Download Rainfall, including snow melt separately (midnight to midnight and shifted daily from 9 to 9)
 for yy in yyyy:
 
-    for m in mm:
+    filename = paths.WEATHER_UK + '/Rainfall/Rainfall_' + str(yy)
+    rain_query = er.query(filename, 'reanalysis-era5-single-levels', met[:2],
+                                    area, yy, mm, dd, hh)
 
-        filename = paths.WEATHER_UK + '/Rainfall/Rainfall_' + str(yy) + str(m)
-        rain_query = er.query(filename, 'reanalysis-era5-single-levels', met[:2],
-                                    area, yy, m, dd, hh)
+    if not os.path.exists(filename + '.nc'):
+        print('downloading ', filename)
+        rain_data = er.era5(rain_query).download()
 
-        if not os.path.exists(filename + '.nc'):
-            print('downloading ', filename)
-            rain_data = er.era5(rain_query).download()
-
-            # Save the hourly precipitation data and aggregate daily (from midnight to midnight)
-            er.aggregate_mean(str(rain_query['file_stem']) + '.nc',
+    if not os.path.exists(filename + '_aggregated.nc'):
+        # Save the hourly precipitation data and aggregate daily (from midnight to midnight)
+        er.aggregate_mean(str(rain_query['file_stem']) + '.nc',
                       str(rain_query['file_stem']) + '_aggregated.nc')
 
 """
@@ -62,7 +59,7 @@ for yy in yyyy:
 
 # Combine the daily midnight-midnight precipitation
 if not os.path.exists(paths.RAINFALL_UK):
-    full_rain_data = xr.open_mfdataset(paths.WEATHER_UK + '/Rainfall/Rainfall_*_aggregated.nc', concat_dim='time',
+    full_rain_data = xr.open_mfdataset(paths.WEATHER_UK + '/Rainfall/Rainfall_*_aggregated.nc', concat_dim='valid_time',
                                        combine='nested')
     full_rain_data.to_netcdf(path=paths.RAINFALL_UK)
 
@@ -93,80 +90,67 @@ for yy in yyyy:
                           area, yy, mm, dd, '12:00', ['1000'])
         pressure_data = er.era5(pressure_query).download()
 
-full_pressure_data = xr.open_mfdataset(paths.WEATHER_UK + '/Pressure/Pressure_*.nc', concat_dim='time', combine='nested')
+full_pressure_data = xr.open_mfdataset(paths.WEATHER_UK + '/Pressure/Pressure_*.nc', concat_dim='valid_time', combine='nested', engine='netcdf4')
 if not os.path.exists(paths.PRESSURE_UK):
     full_pressure_data.to_netcdf(path=paths.PRESSURE_UK)
 
-"""
-## Download Soil Moisture data (4 different soil layers)
-for yy in yyyy:
-    filename = paths.SURFACE_UK + '/Soil_Moisture_' + str(yy)
-
-    if not os.path.exists(filename + '.nc'):
-        print("downloading ", filename)
-        soil_moisture_query = er.query(filename, 'reanalysis-era5-land', met[6:], area, yy, mm, dd, '12:00')
-        soil_moisture_data = er.era5(soil_moisture_query).download()
-
-full_soil_moisture_data = xr.open_mfdataset(paths.SURFACE_UK + '/Soil_Moisture_*.nc', concat_dim='time', combine='nested')
-if not os.path.exists(paths.SOIL_MOISTURE_UK):
-    full_soil_moisture_data.to_netcdf(path=paths.SOIL_MOISTURE_UK)"""
-
 ### Produce lumped regression files per catchment
-domain_weather = xr.open_mfdataset([paths.RAINFALL_UK_SHIFTED,
-                                    paths.PRESSURE_UK])
+domain_weather = xr.open_mfdataset([paths.RAINFALL_UK, paths.PRESSURE_UK])
 domain_weather= domain_weather.astype(np.float32)
 #surface_data = xr.open_dataset(paths.SOIL_MOISTURE_UK)
 #surface_data = surface_data.astype(np.float32)
 
-domain_rain = xr.open_dataset(paths.RAINFALL_UK_SHIFTED)
+domain_rain = xr.open_dataset(paths.RAINFALL_UK)
 
 #domain_rain_HR = xr.open_mfdataset(paths.RAINFALL_UK_SHIFTED_HR)
 #domain_rain_hourly = xr.open_mfdataset([paths.RAINFALL_HOURLY_UK_SHIFTED])
 
-db = pd.read_csv(paths.DATA + '/Catchments_Database.csv')
-
-EXT = '_9to9'
+EXT = '' #'_9to9'
 OUT_FP = paths.CATCHMENT_BASINS
 
-for i in range(len(db)):
-    print('start with ', i)
+with open(paths.DATA + "/qualifying_station_ids.json", "r") as f:
+    data = json.load(f)
 
-    db_path = paths.CATCHMENT_BASINS + '/' + str(db.iloc[i,0])
+for i in range(len(data)):
+    print('start with ', str(data[i]))
 
-    test = hp.hydrobase(db.iloc[i,0],
-                        db_path + '/' + db.iloc[i,3],
-                        db_path + '/' + db.iloc[i,4])
+    db_path = paths.CATCHMENT_BASINS + '/' + str(data[i])
+
+    test = hp.hydrobase(data[i],
+                        db_path + '/' + str(data[i]) + '.csv',
+                        db_path + '/' + str(data[i]) + '.shp')
 
     # Normal Era5 data
-    cache = test.output_era5_file(domain_weather, surface_data, 28,
+    cache = test.output_era5_file(domain_weather, 28,
                                 out_fp=OUT_FP,
                                 ext=EXT,
                                 interpolation_method='linear',
                                 reload=False)
 
-    # Hourly precipitation
-    hourly_cache = test.output_hourly_rain_file(domain_rain_hourly,
-                                              hours_shift=9,
-                                              out_fp=paths.CATCHMENT_BASINS,
-                                              ext=EXT,
-                                              interpolation_method='linear',
-                                              reload=False)
-
     # Use era5 files as reference to alterate the precipitation with both NRFA and surface interpolated values
     rain_columns = (['Rain'] + ['Rain-' + f'{d + 1}' for d in range(27)] +
                     ['Rain_28_Mu', 'Rain_90_Mu', 'Rain_180_Mu'])
-    ref_path = (paths.CATCHMENT_BASINS + '/' + str(db.iloc[i,0]) + '/' +
-               str(db.iloc[i,0]) + f"_lumped{EXT}_linear.csv")
+    ref_path = (paths.CATCHMENT_BASINS + '/' + str(data[i]) + '/' + str(data[i]) + f"_lumped{EXT}.csv")
+    print(ref_path)
     rf_ref = load_data.load_data(ref_path, verbose=False).drop(columns=rain_columns)
 
     # NRFA precipitation
-    rf_nrfa = pd.read_csv(paths.CATCHMENT_BASINS + f'/{str(db.iloc[i,0])}/{str(db.iloc[i,0])}_cdr.csv')
+    rf_nrfa = pd.read_csv(paths.CATCHMENT_BASINS + f'/{str(data[i])}/{str(data[i])}_nrfa.csv')
     nrfa_cache = test.output_nrfa_file(rf_ref=rf_ref,
                                        rf_nrfa=rf_nrfa,
                                        out_fp=OUT_FP,
                                        ext=EXT,
                                        reload=False)
+    """
+       # Hourly precipitation
+       hourly_cache = test.output_hourly_rain_file(domain_rain_hourly,
+                                                 hours_shift=9,
+                                                 out_fp=paths.CATCHMENT_BASINS,
+                                                 ext='',
+                                                 interpolation_method='linear',
+                                                 reload=False) """
 
+    """"
     # Surface interpolation
     surf_interp_cache = test.output_surface_interpolated_file(domain_rain=domain_rain,
                                                               rf_ref=rf_ref,
@@ -183,3 +167,4 @@ for i in range(len(db)):
                                                               resolution=0.1,
                                                               multiplicator=1000*24,
                                                               reload=False)
+    """
