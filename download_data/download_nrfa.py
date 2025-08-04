@@ -3,6 +3,7 @@ import csv
 import json
 import paths
 import urllib
+import shutil
 
 import nrfa_api, download_shapefiles
 
@@ -32,7 +33,7 @@ def get_qualifying_station_ids(all_station_ids, base_url):
                 continue
             start_year = int(stream[0][:4])
             end_year = int(stream[-2][:4])
-            if start_year <= 1980 and end_year >= 2022:
+            if start_year <= 1980 and end_year >= 2020:
                 qualifying.append(sid)
         except Exception as e:
             print(f"⚠️ Skipping {sid} due to error: {e}")
@@ -45,19 +46,62 @@ def get_qualifying_station_ids(all_station_ids, base_url):
     return qualifying
 
 
-def download_csv(station_id):
+def download_csv(station_id, data_type='gdf', csv_path=None):
     print(station_id)
-    query = f"station={station_id}&data-type=gdf&format=json-object"
+    query = f"station={station_id}&data-type={data_type}&format=json-object"
     url = f"{nrfa_api.BASE_URL}/time-series?{query}"
+    print(url)
     response = urllib.request.urlopen(url).read()
     response = json.loads(response)
     stream = response['data-stream']
     if not stream:
         return False
-    csv_path = paths.CATCHMENT_BASINS + f"/{str(station_id)}/{str(station_id)}.csv"
+    if data_type == 'cdr':
+        ext = '_nrfa'
+    else:
+        ext = ''
+    csv_path = paths.CATCHMENT_BASINS + f"/{str(station_id)}/{str(station_id)}{ext}.csv"
     nrfa_api.save_nrfa_api_response_to_csv(response, csv_path)
 
     return True
+
+
+def load_log(log_path):
+    """
+    Load the log from JSON file or return an empty dict if file doesn't exist.
+    """
+    if not os.path.exists(log_path):
+        return {}
+    with open(log_path, "r") as f:
+        return json.load(f)
+
+
+def update_log_with_qualifying_ids(log_path, ids_path):
+    """
+    Load the log file, add missing qualifying IDs, and save the updated log.
+    """
+    log = load_log(log_path)
+
+    # Load qualifying station IDs
+    with open(ids_path, "r") as f:
+        qualifying_ids = json.load(f)
+
+    for sid in qualifying_ids:
+        str_sid = str(sid)
+        if str_sid not in log:
+            log[str_sid] = {
+                "flow_success": False,
+                "rain_success": False,
+                "shape_success": False,
+                "status": "not_attempted"
+            }
+
+    with open(log_path, "w") as f:
+        json.dump(log, f, indent=2)
+
+    print(f"✅ Log updated with {len(qualifying_ids)} qualifying station IDs.")
+    return log
+
 
 def load_processed_stations(log_path):
     if not os.path.exists(log_path):
@@ -65,6 +109,7 @@ def load_processed_stations(log_path):
     with open(log_path, newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         return set(row['station_id'] for row in reader)
+
 
 def download_all_station_data(
     ids_path=QUALIFYING_IDS_PATH,
@@ -84,39 +129,69 @@ def download_all_station_data(
     # Process each station
     for sid in tqdm(station_ids, desc="📥 Downloading station data"):
         str_sid = str(sid)
-        if str_sid in log and log[str_sid].get("status") == "success":
+
+        # Load previous station log if it exists, otherwise initialize
+        station_log = log.get(str_sid, {
+            "flow_success": False,
+            "rain_success": False,
+            "shape_success": False,
+            "status": "not_attempted"
+        })
+
+        # Skip if already fully successful
+        if station_log.get("status") == "success":
             print(str_sid, 'already downloaded')
-            continue  # Already done
+            continue
 
         try:
-            print("downloading streamflow")
-            flow_success = download_csv(sid)
-            print(flow_success)
-            print("downloading shapefile")
-            shape_success = download_shapefiles.download_shapefile_auto(sid)
-            if flow_success and shape_success:
-                status = "success"
-            elif flow_success or shape_success:
-                status = "partial"
+            # Only download what's missing
+            if not station_log.get("flow_success", False):
+                print("downloading streamflow")
+                station_log["flow_success"] = download_csv(sid, 'gdf')
+                print(station_log["flow_success"])
+
+            if not station_log.get("rain_success", False):
+                print("downloading rainfall")
+                station_log["rain_success"] = download_csv(sid, 'cdr')
+                print(station_log["rain_success"])
+
+                # If still failed, move to unsuccessful folder
+                if not station_log["rain_success"]:
+                    unsuccessful_dir = paths.CATCHMENT_BASINS + f"/unsuccessful/{sid}"
+                    os.makedirs(os.path.dirname(unsuccessful_dir), exist_ok=True)
+
+                    try:
+                        shutil.move(paths.CATCHMENT_BASINS + f"/{sid}", unsuccessful_dir)
+                        print(f"❌ Moved {sid} to 'unsuccessful'")
+                    except FileExistsError:
+                        print(f"⚠️ Folder {sid} already exists in 'unsuccessful' — skipping or handling manually")
+
+            if not station_log.get("shape_success", False):
+                print("downloading shapefile")
+                station_log["shape_success"] = download_shapefiles.download_shapefile_auto(sid)
+                print(station_log["shape_success"])
+
+            # Determine updated status
+            if station_log["flow_success"] and station_log["rain_success"] and station_log["shape_success"]:
+                station_log["status"] = "success"
+            elif station_log["flow_success"] or station_log["rain_success"] or station_log["shape_success"]:
+                station_log["status"] = "partial"
             else:
-                status = "failed"
+                station_log["status"] = "failed"
+
         except Exception as e:
-            flow_success = shape_success = False
-            status = f"failed: {str(e)}"
+            print(f"Exception while processing station {sid}: {e}")
+            station_log["status"] = f"failed: {str(e)}"
+            # Do not overwrite previous partial successes
 
-        log[str_sid] = {
-            "flow_success": flow_success,
-            "shape_success": shape_success,
-            "status": status
-        }
-
-        # Update log after each station
+        # Save the updated log entry
+        log[str_sid] = station_log
         with open(log_path, "w") as f:
             json.dump(log, f, indent=2)
 
     print("\n✅ Download process complete.")
 
-# === Main entry point ===
+
 def main():
 
     if not os.path.exists(QUALIFYING_IDS_PATH):

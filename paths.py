@@ -1,4 +1,5 @@
 ROOT = '/Users/av656/Documents/Cambridge/PhD Research/Coding/Lowlands-vs_highlands-streamflow'
+DRIVE_ROOT = '/Users/av656/Google Drive'
 DATA = ROOT + '/data'
 
 WEATHER_UK = DATA + '/weather_UK'

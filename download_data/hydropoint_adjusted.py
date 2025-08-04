@@ -103,8 +103,7 @@ class hydrobase():
         self.flow = self.flow.drop(self.flow.columns[2], axis=1)
         self.flow = self.flow.drop(self.flow.index[0:19])
         self.flow.columns = ['Date', 'Flow']
-        self.flow['Date'] = pd.to_datetime(self.flow['Date'],
-                                           format='%Y-%m-%d').dt.date
+        self.flow['Date'] = pd.to_datetime(self.flow['Date']).dt.normalize()
         self.flow['Flow'] = self.flow['Flow'].astype(float)
         self.boundarypath = boundarypath
         self.boundary = gp.read_file(self.boundarypath)
@@ -172,11 +171,11 @@ class hydrobase():
         weather = self.meteorological_extraction(domain_weather, method)
         weather = rename(weather)
         weather['Rain'] = weather['Rain'] * 1000 * 24
-        weather['Date'] = pd.to_datetime(weather['Date'],
-                                         format='%Y-%m-%d').dt.date
+        weather['Date'] = pd.to_datetime(weather['Date']).dt.normalize()
         weather = weather.drop(['longitude', 'latitude'], axis=1)
         weather['Resultant Windspeed'] = (weather['U Windspeed'] ** 2
                                           + weather['V Windspeed'] ** 2) ** (1 / 2)
+
         for f in ['Rain', 'Snow', 'Temperature', 'Resultant Windspeed', 'Humidity']:
             weather = weather_shift(weather, f, days)
             for window in [28, 90, 180]:
@@ -213,3 +212,21 @@ class hydrobase():
 
         outdf = self.flow_meteorolgy_combine(domain_weather, days, interpolation_method)
         outdf.to_csv(outpath, index=True)
+
+    def output_nrfa_file(self, rf_ref, rf_nrfa, out_fp, ext, reload=False):
+
+        outpath = out_fp + '/' + str(self.station) + f"/{str(self.station)}_lumped{ext}_nrfa.csv"
+
+        if reload is False and os.path.exists(outpath):
+            print(f"Skipping {self.station}, file already exists.")
+            return
+
+        rf_nrfa = weather_shift(rf_nrfa, 'Rain', 28)
+        for window in [28, 90, 180]:
+            ma.stat_roller(rf_nrfa, 'Rain', window, method='mean')
+
+        outdf = pd.merge(rf_nrfa, rf_ref, on='Date', how='inner')
+        outdf.to_csv(outpath, index=True)
+
+
+

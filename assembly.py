@@ -45,40 +45,28 @@ for yy in yyyy:
         er.aggregate_mean(str(rain_query['file_stem']) + '.nc',
                       str(rain_query['file_stem']) + '_aggregated.nc')
 
-"""
     # Shift the daily aggregation (from 9am to 9am)
-    if not os.path.exists(filename + '_9to9.nc'):
+    if not os.path.exists(filename + '_aggregated_9to9.nc'):
         print('shifting', filename)
-        er.shift_time_9am_to_9am(str(rain_query['file_stem']) + '.nc',
-                                 int(yy),
-                                 str(rain_query['file_stem']) + '_9to9.nc')
-        er.aggregate_mean(str(rain_query['file_stem']) + '_9to9.nc',
-                          str(rain_query['file_stem']) + '_aggregated_9to9.nc',
-                          shift=9)
-"""
+        er.aggregate_9to9(str(rain_query['file_stem']) + '.nc',
+                          paths.WEATHER_UK + '/Rainfall/Rainfall_' + str(int(yy) + 1) + '.nc',
+                          int(yy),
+                          str(rain_query['file_stem']) + '_aggregated_9to9.nc')
 
 # Combine the daily midnight-midnight precipitation
 if not os.path.exists(paths.RAINFALL_UK):
     full_rain_data = xr.open_mfdataset(paths.WEATHER_UK + '/Rainfall/Rainfall_*_aggregated.nc', concat_dim='valid_time',
                                        combine='nested')
+    full_rain_data = full_rain_data.assign_coords(
+        valid_time=full_rain_data['valid_time'].dt.floor('D')
+    )
     full_rain_data.to_netcdf(path=paths.RAINFALL_UK)
 
-"""
 # Combine the daily 9 to 9 precipiptation
 if not os.path.exists(paths.RAINFALL_UK_SHIFTED):
     full_shifted_rain_data = xr.open_mfdataset(paths.WEATHER_UK + '/Rainfall/Rainfall_*_aggregated_9to9.nc',
-                                               concat_dim='time', combine='nested')
+                                               concat_dim='valid_time', combine='nested')
     full_shifted_rain_data.to_netcdf(path=paths.RAINFALL_UK_SHIFTED)
-
-# Hourly precipitation for the 9 to 9 shift
-if not os.path.exists(paths.RAINFALL_HOURLY_UK_SHIFTED):
-    all_files = glob.glob(paths.WEATHER_UK + '/Rainfall/Rainfall_*_9to9.nc')
-    filtered_files = [f for f in all_files if 'aggregated' not in f]
-
-    full_rain_data = xr.open_mfdataset(filtered_files, concat_dim='time', combine='nested')
-    if not os.path.exists(paths.RAINFALL_HOURLY_UK_SHIFTED):
-        full_rain_data.to_netcdf(path=paths.RAINFALL_HOURLY_UK_SHIFTED)
-"""
 
 ## Download Pressure data (converted to windspeed and humidity later)
 for yy in yyyy:
@@ -91,11 +79,14 @@ for yy in yyyy:
         pressure_data = er.era5(pressure_query).download()
 
 full_pressure_data = xr.open_mfdataset(paths.WEATHER_UK + '/Pressure/Pressure_*.nc', concat_dim='valid_time', combine='nested', engine='netcdf4')
+full_pressure_data = full_pressure_data.assign_coords(
+    valid_time=full_pressure_data['valid_time'].dt.floor('D')
+)
 if not os.path.exists(paths.PRESSURE_UK):
     full_pressure_data.to_netcdf(path=paths.PRESSURE_UK)
 
 ### Produce lumped regression files per catchment
-domain_weather = xr.open_mfdataset([paths.RAINFALL_UK, paths.PRESSURE_UK])
+domain_weather = xr.open_mfdataset([paths.RAINFALL_UK_SHIFTED, paths.PRESSURE_UK])
 domain_weather= domain_weather.astype(np.float32)
 #surface_data = xr.open_dataset(paths.SOIL_MOISTURE_UK)
 #surface_data = surface_data.astype(np.float32)
@@ -105,11 +96,14 @@ domain_rain = xr.open_dataset(paths.RAINFALL_UK)
 #domain_rain_HR = xr.open_mfdataset(paths.RAINFALL_UK_SHIFTED_HR)
 #domain_rain_hourly = xr.open_mfdataset([paths.RAINFALL_HOURLY_UK_SHIFTED])
 
-EXT = '' #'_9to9'
+EXT = '_9to9' #'_9to9'
 OUT_FP = paths.CATCHMENT_BASINS
 
-with open(paths.DATA + "/qualifying_station_ids.json", "r") as f:
-    data = json.load(f)
+with open(paths.DATA + "/station_download_log.json", "r") as f:
+    stream = json.load(f)
+
+# Filter for successful entries
+data = [station_id for station_id, info in stream.items() if info.get("status") == "success"]
 
 for i in range(len(data)):
     print('start with ', str(data[i]))
@@ -131,16 +125,22 @@ for i in range(len(data)):
     rain_columns = (['Rain'] + ['Rain-' + f'{d + 1}' for d in range(27)] +
                     ['Rain_28_Mu', 'Rain_90_Mu', 'Rain_180_Mu'])
     ref_path = (paths.CATCHMENT_BASINS + '/' + str(data[i]) + '/' + str(data[i]) + f"_lumped{EXT}.csv")
-    print(ref_path)
     rf_ref = load_data.load_data(ref_path, verbose=False).drop(columns=rain_columns)
 
     # NRFA precipitation
-    rf_nrfa = pd.read_csv(paths.CATCHMENT_BASINS + f'/{str(data[i])}/{str(data[i])}_nrfa.csv')
+    rain = pd.read_csv(paths.CATCHMENT_BASINS + f'/{str(data[i])}/{str(data[i])}_nrfa.csv')
+    rain = rain.drop(rain.columns[2], axis=1)
+    rain = rain.drop(rain.index[0:19])
+    rain.columns = ['Date', 'Rain']
+    rain['Date'] = pd.to_datetime(rain['Date'], format='%Y-%m-%d').dt.date
+    rain['Rain'] = rain['Rain'].astype(float)
+    rf_nrfa = rain
+
     nrfa_cache = test.output_nrfa_file(rf_ref=rf_ref,
                                        rf_nrfa=rf_nrfa,
-                                       out_fp=OUT_FP,
+                                        out_fp=OUT_FP,
                                        ext=EXT,
-                                       reload=False)
+                                       reload=True)
     """
        # Hourly precipitation
        hourly_cache = test.output_hourly_rain_file(domain_rain_hourly,

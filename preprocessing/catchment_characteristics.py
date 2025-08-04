@@ -38,15 +38,23 @@ def get_characteristics_all_stations(stations_list, input_type='9to9_linear', ye
 
     new_data_list = []
 
-    for station_nr in os.listdir(stations_list):
+    # Determine source of station list
+    if isinstance(stations_list, str) and os.path.isdir(stations_list):
+        # Case: stations_list is a directory path — list subdirectories
+        station_nrs = os.listdir(stations_list)
+    elif isinstance(stations_list, list):
+        # Case: stations_list is already a list of station numbers
+        station_nrs = stations_list
 
-        df = pd.read_csv('../' + paths.CATCHMENT_BASINS + '/' + str(station_nr) + '/' + str(str(station_nr) + '_gdf.csv'))
+    for station_nr in station_nrs:
+
+        df = pd.read_csv(paths.CATCHMENT_BASINS + '/' + str(station_nr) + '/' + str(str(station_nr) + '.csv'))
         name = df.loc[df.index[3]].iloc[2]
 
         boundary = gpd.read_file \
-        ('../' + paths.CATCHMENT_BASINS + '/' + str(station_nr) + '/' + str(str(station_nr) + '.shp'))
+        (paths.CATCHMENT_BASINS + '/' + str(station_nr) + '/' + str(str(station_nr) + '.shp'))
 
-        df_predictions = pd.read_csv('../' + paths.PREDICTIONS + f"/{input_type}/{station_nr}_{input_type}.csv")
+        df_predictions = pd.read_csv(paths.PREDICTIONS + f"/{input_type}/{station_nr}_{input_type}.csv")
         df_predictions = df_predictions.dropna(subset=['Flow', 'Predicted'])
         df_predictions = df_predictions.loc[:, ~df_predictions.columns.str.contains('^Unnamed')]
         try:
@@ -67,10 +75,13 @@ def get_characteristics_all_stations(stations_list, input_type='9to9_linear', ye
         })
 
     overview_gdf = gpd.GeoDataFrame(new_data_list)
+    overview_gdf = gpd.GeoDataFrame(new_data_list)
 
-    metadata = pd.read_csv('../' + paths.DATA + '/Catchments_Database.csv')
+    """
+    metadata = pd.read_csv(paths.DATA + '/Catchments_Database.csv')
     overview_gdf = calculate_slope_gradient(overview_gdf, metadata)
     overview_gdf['90 percentile'] = overview_gdf['Station'].apply(
         lambda station: metadata[metadata['Station number'] == int(station)]['90 percentile'].iloc[0])
+    """
     overview_gdf['Latitude'] = overview_gdf['Geometry'].apply(lambda geometry: calculate_latitude(geometry))
     return overview_gdf

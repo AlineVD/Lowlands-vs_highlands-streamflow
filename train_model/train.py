@@ -208,7 +208,11 @@ class NeuralNetworkRegressor(BaseEstimator, RegressorMixin):
         else:
             X = X_extended[:, :-1]
 
-        X_tensor = torch.tensor(X, dtype=torch.float32).clone().detach()
+        if not isinstance(X, torch.Tensor):
+            X_tensor = torch.tensor(X, dtype=torch.float32)
+        else:
+            X_tensor = X.detach().clone().float()
+
         with torch.no_grad():
             predictions = self.model(X_tensor).numpy()
         return predictions
