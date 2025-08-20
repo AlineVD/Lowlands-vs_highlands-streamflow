@@ -110,13 +110,13 @@ class NeuralNetworkRegressor(BaseEstimator, RegressorMixin):
                  input_size=10,
                  hidden_size=64,
                  output_size=1,
-                 dropout_rate=0,
-                 learning_rate=0.001,
-                 weight_decay=0.2,
-                 num_epochs=9000,
+                 dropout_rate=0.05,
+                 learning_rate=0.0005,
+                 weight_decay=0.0001,
+                 num_epochs=5000,
                  criterion=nn.MSELoss(),
-                 patience=10,
-                 early_stopping=True,
+                 patience=200,
+                 early_stopping=False,
                  verbose=True):
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -297,4 +297,5 @@ def calculate_performance_metrics(outdf, years_to_consider, plot=True):
     RMSE = me.RMSE(df['Flow'], df['Predicted'])
     NSE = me.R2(df['Flow'], df['Predicted'])
     RE = me.RE(df['Flow'], df['Predicted'], psi_RE)
-    return {'RMSE': RMSE, 'NSE': NSE, 'RE': RE}
+    KGE = me.KGE(df['Flow'], df['Predicted'])
+    return {'RMSE': RMSE, 'NSE': NSE, 'RE': RE, 'KGE': KGE}

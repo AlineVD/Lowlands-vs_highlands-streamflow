@@ -75,7 +75,6 @@ def get_characteristics_all_stations(stations_list, input_type='9to9_linear', ye
         })
 
     overview_gdf = gpd.GeoDataFrame(new_data_list)
-    overview_gdf = gpd.GeoDataFrame(new_data_list)
 
     """
     metadata = pd.read_csv(paths.DATA + '/Catchments_Database.csv')

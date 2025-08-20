@@ -1,6 +1,6 @@
 ROOT = '/Users/av656/Documents/Cambridge/PhD Research/Coding/Lowlands-vs_highlands-streamflow'
-DRIVE_ROOT = '/Users/av656/Google Drive'
-DATA = ROOT + '/data'
+DRIVE_ROOT = '/Users/av656/av656@cam.ac.uk - Google Drive/My Drive/Lowlands-vs_highlands-streamflow'
+DATA = DRIVE_ROOT + '/data'
 
 WEATHER_UK = DATA + '/weather_UK'
 SURFACE_UK = DATA + '/surface_UK'
